@@ -56,10 +56,11 @@ class StageAwareClaudeRunner:
     """Enhanced Claude Code Runner with development stage support"""
     
     def __init__(self, base_dir: str, stage_pattern: Optional[str] = None,
-                 delay: int = 2):
+                 delay: int = 2, stage_dirs: Optional[List[str]] = None):
         self.base_dir = Path(base_dir).resolve()
         self.stage_pattern = stage_pattern
         self.delay = delay
+        self.stage_dirs = [Path(d) for d in stage_dirs] if stage_dirs else []
         self.platform = self._detect_platform()
         self.launcher = TerminalLauncher(self.platform)
         
@@ -104,9 +105,7 @@ class StageAwareClaudeRunner:
                 self.base_dir.parent,
                 Path.cwd(),
                 Path(__file__).parent,
-                Path("D:/dev3/stages"),  # Stage directory
-                Path("/mnt/d/dev3/stages")  # WSL path
-            ]
+            ] + self.stage_dirs  # Add custom stage directories
             
             for search_path in search_paths:
                 if not search_path.exists():
@@ -689,6 +688,9 @@ Examples:
     parser.add_argument("--delay", type=int, default=2,
                        help="Delay between launches (seconds)")
     
+    parser.add_argument("--stage-dirs", 
+                       help="Comma-separated custom directories to search for stage files")
+    
     parser.add_argument("--exclude", 
                        help="Comma-separated directories to exclude")
     
@@ -763,10 +765,12 @@ Examples:
     
     try:
         # Create runner with stage support
+        stage_dirs = args.stage_dirs.split(',') if args.stage_dirs else []
         runner = StageAwareClaudeRunner(
             base_dir=str(base_dir),
             stage_pattern=args.stage,
-            delay=args.delay
+            delay=args.delay,
+            stage_dirs=stage_dirs
         )
         
         # Run

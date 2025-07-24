@@ -42,7 +42,8 @@ class ClaudeCodeRunner:
     """Main class for automating Claude Code terminals"""
     
     def __init__(self, base_dir: str, coderun_file: str = "coderun.md", 
-                 init_file: str = "coderun_init.md", delay: int = 2):
+                 init_file: str = "coderun_init.md", delay: int = 2,
+                 wsl_distro: str = "Ubuntu"):
         """
         Initialize the ClaudeCodeRunner
         
@@ -51,11 +52,13 @@ class ClaudeCodeRunner:
             coderun_file: Main instruction file
             init_file: Initialization instruction file
             delay: Delay between launching terminals
+            wsl_distro: WSL distribution name (default: Ubuntu)
         """
         self.base_dir = Path(base_dir).resolve()
         self.coderun_file = coderun_file
         self.init_file = init_file
         self.delay = delay
+        self.wsl_distro = wsl_distro
         self.platform = self._detect_platform()
         self.terminal_cmd = self._get_terminal_command()
         
@@ -83,7 +86,7 @@ class ClaudeCodeRunner:
                 return ["wt.exe", "-d"]
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # Fallback to cmd.exe
-                return ["cmd.exe", "/c", "start", "cmd.exe", "/k", "wsl", "-d", "Ubuntu", "--cd"]
+                return ["cmd.exe", "/c", "start", "cmd.exe", "/k", "wsl", "-d", self.wsl_distro, "--cd"]
         
         elif self.platform == "macos":
             # Use osascript to open Terminal.app
@@ -154,10 +157,54 @@ set -e  # Exit on error
 echo "Starting Claude Code automation for {directory.name}"
 cd "{directory}"
 
-# Function to send keystrokes with delay
-send_keys() {{
-    echo "$1" | xclip -selection clipboard 2>/dev/null || echo "$1" | pbcopy 2>/dev/null || true
-    sleep 0.5
+# Detect platform
+PLATFORM=$(uname -s)
+
+# Function to set clipboard content
+set_clipboard() {{
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        echo "$1" | pbcopy
+    else
+        # Try xclip first, then xsel
+        if command -v xclip >/dev/null 2>&1; then
+            echo "$1" | xclip -selection clipboard
+        elif command -v xsel >/dev/null 2>&1; then
+            echo "$1" | xsel --clipboard --input
+        else
+            echo "Warning: No clipboard tool found. Please install xclip or xsel on Linux."
+        fi
+    fi
+}}
+
+# Function to send keystrokes (platform-specific)
+send_keystrokes() {{
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        # macOS: Use osascript for automation
+        osascript -e 'tell application "System Events" to keystroke "v" using command down'
+        sleep 0.5
+        osascript -e 'tell application "System Events" to key code 36' # Return key
+    else
+        # Linux: Check if xdotool is available
+        if command -v xdotool >/dev/null 2>&1; then
+            xdotool key --window $(xdotool search --pid $1 | head -1) ctrl+v 2>/dev/null || true
+            sleep 0.5
+            xdotool key --window $(xdotool search --pid $1 | head -1) Return 2>/dev/null || true
+        else
+            echo "Warning: xdotool not found. Automation features limited on Linux."
+            echo "Please install xdotool for full automation support."
+        fi
+    fi
+}}
+
+# Function to type text (platform-specific)
+type_text() {{
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        osascript -e "tell application \\"System Events\\" to keystroke \\"$1\\""
+    else
+        if command -v xdotool >/dev/null 2>&1; then
+            xdotool type --window $(xdotool search --pid $2 | head -1) "$1" 2>/dev/null || true
+        fi
+    fi
 }}
 
 # Try to resume session
@@ -170,9 +217,8 @@ if claude --resume --dangerously-skip-permissions 2>&1 | grep -q "Select a sessi
     sleep 2
     
     # Insert coderun.md content
-    send_keys '{coderun_content}'
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) ctrl+v 2>/dev/null || true
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) Return 2>/dev/null || true
+    set_clipboard '{coderun_content}'
+    send_keystrokes $CLAUDE_PID
 else
     echo "No session to resume, starting new session..."
     # Start new session
@@ -182,23 +228,32 @@ else
     
     # Wait for main prompt and send /init
     echo "Sending /init command..."
-    xdotool type --window $(xdotool search --pid $CLAUDE_PID | head -1) "/init" 2>/dev/null || true
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) Return 2>/dev/null || true
+    type_text "/init" $CLAUDE_PID
+    sleep 0.5
+    if [[ "$PLATFORM" == "Darwin" ]]; then
+        osascript -e 'tell application "System Events" to key code 36' # Return key
+    else
+        xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) Return 2>/dev/null || true
+    fi
     sleep 2
     
     # Insert coderun_init.md content
-    send_keys '{init_content}'
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) ctrl+v 2>/dev/null || true
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) Return 2>/dev/null || true
+    set_clipboard '{init_content}'
+    send_keystrokes $CLAUDE_PID
     sleep 2
     
     # Insert coderun.md content
-    send_keys '{coderun_content}'
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) ctrl+v 2>/dev/null || true
-    xdotool key --window $(xdotool search --pid $CLAUDE_PID | head -1) Return 2>/dev/null || true
+    set_clipboard '{coderun_content}'
+    send_keystrokes $CLAUDE_PID
 fi
 
 echo "Claude Code automation completed for {directory.name}"
+echo ""
+echo "Note: If automation didn't work properly, you can manually:"
+echo "1. Run 'claude --resume --dangerously-skip-permissions' or 'claude --dangerously-skip-permissions'"
+echo "2. For new sessions, type '/init' and paste the instruction files"
+echo ""
+
 # Keep terminal open
 exec bash
 """
@@ -257,7 +312,7 @@ exec bash
                 
                 if self.terminal_cmd[0] == "wt.exe":
                     # Windows Terminal
-                    cmd = [self.terminal_cmd[0], "-d", win_path, "wsl", "-d", "Ubuntu", 
+                    cmd = [self.terminal_cmd[0], "-d", win_path, "wsl", "-d", self.wsl_distro, 
                            f"cd '{directory}' && bash"]
                 else:
                     # CMD fallback
@@ -381,6 +436,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--wsl-distro",
+        default="Ubuntu",
+        help="WSL distribution name (default: Ubuntu)"
+    )
+    
+    parser.add_argument(
         "--exclude",
         help="Comma-separated list of directories to exclude"
     )
@@ -422,7 +483,8 @@ Examples:
             base_dir=str(base_dir),
             coderun_file=args.coderun,
             init_file=args.init,
-            delay=args.delay
+            delay=args.delay,
+            wsl_distro=args.wsl_distro
         )
         
         runner.run(exclude=exclude, dry_run=args.dry_run)

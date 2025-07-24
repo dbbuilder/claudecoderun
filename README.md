@@ -13,6 +13,41 @@ This tool scans a base directory and opens Claude Code in a new terminal for eac
 - Linux (WSL) or macOS
 - Terminal emulator (Windows Terminal for WSL, Terminal.app or iTerm2 for macOS)
 
+### Platform-Specific Requirements
+
+#### Linux
+- **Clipboard support**: Install `xclip` or `xsel`
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install xclip
+  
+  # Fedora
+  sudo dnf install xclip
+  
+  # Arch
+  sudo pacman -S xclip
+  ```
+- **Window automation** (optional for basic script): Install `xdotool`
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install xdotool
+  
+  # Fedora
+  sudo dnf install xdotool
+  
+  # Arch
+  sudo pacman -S xdotool
+  ```
+  Note: The enhanced version with pexpect provides better automation without xdotool
+
+#### macOS
+- No additional tools required (uses built-in `pbcopy` and `osascript`)
+
+#### Windows (WSL)
+- Windows Subsystem for Linux (WSL) with a Linux distribution installed
+- Windows Terminal recommended (fallback to CMD if not available)
+- Ensure `wslpath` is available (included by default in WSL)
+
 ## Installation
 
 1. Clone or download this project to `D:\dev2\claudecoderun\` (or your preferred location)
@@ -46,6 +81,21 @@ python claudecoderun.py /path/to/base/directory --coderun custom_instructions.md
 - `--delay` - Delay between launching terminals (default: 2 seconds)
 - `--exclude` - Comma-separated list of directories to exclude
 - `--dry-run` - Show what would be executed without running
+- `--wsl-distro` - WSL distribution name (default: Ubuntu)
+- `--verbose` - Enable verbose logging
+
+### Enhanced Version Options
+
+The enhanced version (`claudecoderun_enhanced.py`) provides additional features:
+- `--parallel` - Launch terminals in parallel
+- `--max-parallel` - Maximum number of parallel launches (default: 3)
+
+### Stage Version Options
+
+The stage version (`claudecoderun_stage.py`) adds development workflow support:
+- `--stage` - Specify development stage (e.g., planning_design_gitsetup, scaffolding_mvp)
+- `--stage-dirs` - Custom directories to search for stage files (comma-separated)
+- `--list-stages` - List all available development stages
 
 ## How It Works
 

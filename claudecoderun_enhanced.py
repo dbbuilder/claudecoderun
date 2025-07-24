@@ -54,16 +54,18 @@ logger = logging.getLogger(__name__)
 class TerminalLauncher:
     """Platform-specific terminal launcher"""
     
-    def __init__(self, platform_name: str):
+    def __init__(self, platform_name: str, wsl_distro: str = "Ubuntu"):
         self.platform = platform_name
+        self.wsl_distro = wsl_distro
         self.terminal_cmds = self._get_terminal_commands()
+        self._check_required_tools()
     
     def _get_terminal_commands(self) -> Dict[str, Any]:
         """Get terminal commands for each platform"""
         commands = {
             "wsl": {
-                "wt": ["wt.exe", "-d", "{path}", "wsl", "-d", "Ubuntu", "--cd", "{wsl_path}", "--", "bash", "-c", "{script}"],
-                "cmd": ["cmd.exe", "/c", "start", "cmd.exe", "/k", "wsl", "-d", "Ubuntu", "--cd", "{wsl_path}", "--", "bash", "{script}"]
+                "wt": ["wt.exe", "-d", "{path}", "wsl", "-d", self.wsl_distro, "--cd", "{wsl_path}", "--", "bash", "-c", "{script}"],
+                "cmd": ["cmd.exe", "/c", "start", "cmd.exe", "/k", "wsl", "-d", self.wsl_distro, "--cd", "{wsl_path}", "--", "bash", "{script}"]
             },
             "macos": {
                 "terminal": {
@@ -179,6 +181,41 @@ class TerminalLauncher:
             return True
         except:
             return False
+    
+    def _check_required_tools(self):
+        """Check for platform-specific required tools and warn if missing"""
+        warnings = []
+        
+        if self.platform == "linux":
+            # Check for clipboard tools
+            if not self._check_command_exists("xclip") and not self._check_command_exists("xsel"):
+                warnings.append("No clipboard tool found. Install xclip or xsel for clipboard support:")
+                warnings.append("  Ubuntu/Debian: sudo apt-get install xclip")
+                warnings.append("  Fedora: sudo dnf install xclip")
+                warnings.append("  Arch: sudo pacman -S xclip")
+            
+            # Check for automation tools (only for basic script)
+            if not self._check_command_exists("xdotool"):
+                warnings.append("xdotool not found. Install for window automation support:")
+                warnings.append("  Ubuntu/Debian: sudo apt-get install xdotool")
+                warnings.append("  Fedora: sudo dnf install xdotool")
+                warnings.append("  Arch: sudo pacman -S xdotool")
+                warnings.append("  Note: Enhanced mode with pexpect provides better automation")
+        
+        elif self.platform == "macos":
+            # macOS uses built-in tools (pbcopy, osascript) so no warnings needed
+            pass
+        
+        elif self.platform == "wsl":
+            # WSL-specific checks
+            if not self._check_command_exists("wslpath"):
+                warnings.append("wslpath not found. Make sure you're running in WSL")
+        
+        if warnings:
+            print(f"\n{Fore.YELLOW}Platform compatibility warnings:{Style.RESET_ALL}")
+            for warning in warnings:
+                print(f"  {warning}")
+            print()
 
 
 class ClaudeAutomation:
@@ -348,13 +385,15 @@ class ClaudeCodeRunnerEnhanced:
     """Enhanced Claude Code Runner with better automation"""
     
     def __init__(self, base_dir: str, coderun_file: str = "coderun.md",
-                 init_file: str = "coderun_init.md", delay: int = 2):
+                 init_file: str = "coderun_init.md", delay: int = 2,
+                 wsl_distro: str = "Ubuntu"):
         self.base_dir = Path(base_dir).resolve()
         self.coderun_file = coderun_file
         self.init_file = init_file
         self.delay = delay
+        self.wsl_distro = wsl_distro
         self.platform = self._detect_platform()
-        self.launcher = TerminalLauncher(self.platform)
+        self.launcher = TerminalLauncher(self.platform, wsl_distro)
         
         # Read instruction files once
         self.coderun_content = self._read_instruction_file(self.coderun_file)
@@ -580,6 +619,8 @@ Examples:
                        help="Initialization instruction file")
     parser.add_argument("--delay", type=int, default=2,
                        help="Delay between launches (seconds)")
+    parser.add_argument("--wsl-distro", default="Ubuntu",
+                       help="WSL distribution name (default: Ubuntu)")
     parser.add_argument("--exclude", help="Comma-separated directories to exclude")
     parser.add_argument("--dry-run", action="store_true",
                        help="Show what would be done")
@@ -615,7 +656,8 @@ Examples:
             base_dir=str(base_dir),
             coderun_file=args.coderun,
             init_file=args.init,
-            delay=args.delay
+            delay=args.delay,
+            wsl_distro=args.wsl_distro
         )
         
         # Run
